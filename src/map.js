@@ -132,12 +132,26 @@ export function buildMap(scene) {
       if (!blocked) { edges[i].push(j); edges[j].push(i); }
     }
   }
-  // Safety: ensure connectivity by linking each node to its nearest ok node if isolated.
-  for (let i = 0; i < nodes.length; i++) {
-    if (edges[i].length === 0 && nodeOk[i]) {
+  // Safety: ensure global connectivity — BFS from node 0, then link each
+  // unreached ok node to its nearest reached node until the graph is connected.
+  const connected = () => {
+    const seen = new Array(nodes.length).fill(false);
+    const q = [0]; seen[0] = true;
+    while (q.length) {
+      const u = q.shift();
+      for (const v of edges[u]) if (!seen[v]) { seen[v] = true; q.push(v); }
+    }
+    return seen;
+  };
+  for (let guard = 0; guard < nodes.length; guard++) {
+    const seen = connected();
+    const unreached = [];
+    for (let i = 0; i < nodes.length; i++) if (nodeOk[i] && !seen[i]) unreached.push(i);
+    if (unreached.length === 0) break;
+    for (const i of unreached) {
       let best = -1, bd = Infinity;
       for (let j = 0; j < nodes.length; j++) {
-        if (j === i || !nodeOk[j]) continue;
+        if (j === i || !nodeOk[j] || !seen[j]) continue;
         const d = nodes[i].distanceTo(nodes[j]);
         if (d < bd) { bd = d; best = j; }
       }

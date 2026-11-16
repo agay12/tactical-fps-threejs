@@ -35,6 +35,8 @@ export class Game {
     this.timer = 0;
     this.roundWinner = null;
     this.human = null;
+    this.buyTime = opts.smoke ? 2 : BUY_TIME;
+    this.roundTime = opts.smoke ? 25 : ROUND_TIME;
     this.running = false;
     this.keys = new Set();
     this.raycaster = new THREE.Raycaster();
@@ -110,7 +112,7 @@ export class Game {
   startRound() {
     this.roundNumber++;
     this.phase = 'buy';
-    this.timer = BUY_TIME;
+    this.timer = this.buyTime;
     this.roundWinner = null;
     for (const e of this.entities) {
       const spawn = this.map.spawns[e.team][this.entities.filter(x => x.team === e.team).indexOf(e)];
@@ -293,8 +295,13 @@ export class Game {
         if (e.state === 'engage') e.state = 'hunt';
         if (!e.path || e.pathIdx >= e.path.length) {
           // choose objective: last seen enemy pos, else push toward enemy side / random waypoint
-          const goal = (e.lastSeen && this.rng() < 0.5) ? e.lastSeen
-            : this.map.nav.nodes[this.rng.int(this.map.nav.nodes.length)];
+          const enemySide = e.team === 'ct' ? 1 : -1;
+          const navOk = this.map.nav.ok;
+          const enemyNodes = this.map.nav.nodes.filter((n, i) => navOk[i] && Math.sign(n.z) === enemySide);
+          const goal = (e.lastSeen && this.rng() < 0.6) ? e.lastSeen
+            : (this.rng() < 0.7 && enemyNodes.length)
+              ? enemyNodes[this.rng.int(enemyNodes.length)]
+              : this.map.nav.nodes[this.rng.int(this.map.nav.nodes.length)];
           e.path = this.findPath(e.pos, goal);
           e.pathIdx = 0;
         }
@@ -493,8 +500,9 @@ export class Game {
   }
 
   updateHud() {
-    if (!this.hudEls || !this.human) return;
-    const e = this.human, w = WEAPONS[e.weapon.key];
+    if (!this.hudEls) return;
+    const e = this.human || this.entities[0];
+    const w = WEAPONS[e.weapon.key];
     this.hudEls.scoreCt.textContent = `CT ${this.score.ct}`;
     this.hudEls.scoreT.textContent = `T ${this.score.t}`;
     this.hudEls.roundInfo.textContent = `R${this.roundNumber} · MR${WIN_ROUNDS}`;
@@ -520,7 +528,7 @@ export class Game {
     const dt = Math.min(0.1, this.clock.getDelta());
     if (this.phase === 'buy') {
       this.timer -= dt;
-      if (this.timer <= 0) { this.phase = 'live'; this.timer = ROUND_TIME; this.msg('GO GO GO!'); }
+      if (this.timer <= 0) { this.phase = 'live'; this.timer = this.roundTime; this.msg('GO GO GO!'); }
     } else if (this.phase === 'live') {
       this.timer -= dt;
       if (this.timer <= 0) this.endRound('ct'); // time out favors defenders

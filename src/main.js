@@ -15,7 +15,7 @@ window.addEventListener('unhandledrejection', (ev) => {
 });
 
 const canvas = document.getElementById('game');
-const game = new Game(canvas, { seed: Number(params.get('seed') || 1337) });
+const game = new Game(canvas, { seed: Number(params.get('seed') || 1337), smoke: SMOKE });
 game.setMap(buildMap(game.scene));
 window.__game = game;
 
@@ -74,6 +74,25 @@ if (SMOKE) {
     entitiesAlive: () => game.entities.filter(e => e.alive).length,
     errors: () => window.__smokeErrors,
   };
+  // Publish smoke state into the DOM so headless dump-dom can verify it.
+  const probe = document.createElement('div');
+  probe.id = 'smoke-status';
+  probe.style.cssText = 'position:fixed;top:0;left:0;color:#fff;font-size:10px;';
+  document.body.appendChild(probe);
+  const publish = () => {
+    try {
+      probe.textContent = 'SMOKE:' + JSON.stringify({
+        status: window.__smoke.status, phase: game.phase, round: game.roundNumber,
+        score: game.score, alive: game.entities.filter(e => e.alive).length,
+        frames: window.__frameCount ? window.__frameCount() : 0,
+        kills: game.entities.map(e => e.kills).join(','),
+        pos: game.entities.slice(0, 3).map(e => [Math.round(e.pos.x), Math.round(e.pos.z)].join(':')).join(','),
+        errors: window.__smokeErrors,
+      });
+    } catch (e) { /* keep silent */ }
+  };
+  setInterval(publish, 250);
+  publish();
   // End the match early after 40 virtual seconds so smoke runs conclude.
   const smokeEnd = setTimeout(() => {
     try {
@@ -86,12 +105,25 @@ if (SMOKE) {
 
 // --- game loop ---
 let running = true;
+let lastFrame = 0;
+let frameCount = 0;
 function loop() {
   if (!running) return;
   requestAnimationFrame(loop);
-  game.update();
+  frameCount++;
+  lastFrame = performance.now();
+  try { game.update(); } catch (e) {
+    window.__smokeErrors.push('frame: ' + (e && e.stack ? e.stack.split('\n')[0] : e));
+    if (window.__lastFrameError === undefined) window.__lastFrameError = String(e && e.stack || e);
+  }
 }
 requestAnimationFrame(loop);
+// Headless-safe fallback: if rAF stalls (no compositor), a low-rate timer
+// keeps the simulation advancing. dt is capped inside game.update().
+window.__frameCount = () => frameCount;
+setInterval(() => {
+  if (running && performance.now() - lastFrame > 120) game.update();
+}, 50);
 
 // Expose a stop for smoke mode to halt rendering churn
 window.__stopLoop = () => { running = false; };
