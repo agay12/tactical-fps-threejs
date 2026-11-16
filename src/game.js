@@ -551,7 +551,10 @@ export class Game {
       this.camera.position.set(focus.x, 14, focus.z + 10);
       this.camera.lookAt(focus);
     }
-    if (this.renderer && this.map) this.renderer.render(this.scene, this.camera);
+    // Throttle rendering in smoke mode (software GL is slow); sim still runs at full rate.
+    const skip = this.opts.smoke ? 8 : 1;
+    this._frameNo = (this._frameNo || 0) + 1;
+    if (this.renderer && this.map && this._frameNo % skip === 0) this.renderer.render(this.scene, this.camera);
     const now = performance.now();
     if (now - this.lastHudUpdate > 100) { this.lastHudUpdate = now; this.updateHud(); }
   }
